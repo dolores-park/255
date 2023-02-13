@@ -51,10 +51,23 @@ class Keychain {
    * Return Type: void
    */
   static async init(password) {
-    let keychain = new Keychain();
     keychain.secrets.kvs = new Map();
+
+    let masterSalt = genRandomSalt();
     // convert PW into usable for by subtle
-    password = await subtle.importKey("raw", password, {name: "PBKDF2"}, false, ["deriveKey"]);
+    let rawKey = await subtle.importKey("raw", password, {name: "PBKDF2"}, false, ["deriveKey"]);
+    let masterKey = await subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: masterSalt,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      rawKey,
+      { name: "HMAC", hash: "SHA-256", length: 256 },
+      true,
+      ["sign", "verify"]
+    );
     keychain.secrets.MasterKey = await subtle.deriveKey(
       "PBKDF2",
       untypedToTypedArray(password),
