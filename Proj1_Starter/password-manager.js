@@ -141,8 +141,8 @@ class Keychain {
       }
     }
     repr = JSON.parse(repr)
-    // console.log(">>>>>>>>>>")
-    // console.log(repr)
+    console.log(">>>>>>>>>>")
+    console.log(repr)
 
     let rawKey = await subtle.importKey(
       "raw",
@@ -202,8 +202,8 @@ class Keychain {
       ready: this.ready,
       kvs: this.secrets.kvs
     }
-    // console.log(arr_0);
-    // console.log(">>>>>>>>>><<<<<<<<<<")
+    console.log(arr_0);
+    console.log(">>>>>>>>>><<<<<<<<<<")
 
     arr_0 = JSON.stringify(arr_0)
     let arr_1 = await subtle.digest("SHA-256", arr_0)
