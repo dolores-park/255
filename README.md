@@ -1,1 +1,1 @@
-### This is a private repo for class projects from Stanford's CS255.
+### A password manager like 1Password, built with cryptographically signatures and hashes.
