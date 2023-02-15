@@ -60,6 +60,12 @@ class Keychain {
       true,
       ["sign", "verify"]
     );
+    let signedData = "This will be signed.";
+    let masterSignature = await subtle.sign(
+      "HMAC",
+      masterKey,
+      signedData
+    );
 
     let domainSalt = genRandomSalt();
     let domainSubKeyByte = await subtle.sign(
@@ -95,8 +101,9 @@ class Keychain {
     let secrets = {
       ivs: new Map(),
       kvs: secretKVS,
+      MasterSignature: bufferToUntypedArray(masterSignature),
       MasterSalt: masterSalt,
-      MasterKey: masterKey,
+      SignedData: signedData,
       DomainSalt: domainSalt,
       DomainSubKey: domainSubKey,
       PasswordSalt: passwordSalt,
@@ -127,7 +134,47 @@ class Keychain {
    * Return Type: Keychain
    */
   static async load(password, repr, trustedDataCheck) {
-    throw "Not Implemented!";
+    if (trustedDataCheck != null) {
+      let chkr = await subtle.digest("SHA-256", repr)
+      if (byteArrayToString(chkr) != trustedDataCheck) {
+        throw "detect tampered repr while loading"
+      }
+    }
+    repr = JSON.parse(repr)
+
+    let rawKey = await subtle.importKey(
+      "raw",
+      password,
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
+    let masterKey = await subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: repr.secrets.MasterSalt,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      rawKey,
+      { name: "HMAC", hash: "SHA-256", length: 256 },
+      true,
+      ["sign", "verify"]
+    );
+
+    let verified = await subtle.verify(
+      "HMAC",
+      masterKey,
+      untypedToTypedArray(repr.secrets.MasterSignature),
+      repr.secrets.SignedData
+    )
+
+    if (!verified) {
+      throw "invalid password"
+    }
+
+    return new Keychain(repr.secrets, repr.data);
+
   }
 
   /**
@@ -144,7 +191,17 @@ class Keychain {
    * Return Type: array
    */
   async dump() {
-    throw "Not Implemented!";
+    if (!this.ready) {
+      return null
+    }
+    let arr_0 = {
+      secrets: this.secrets,
+      data: this.data,
+      ready: this.ready
+    }
+    arr_0 = JSON.stringify(arr_0)
+    let arr_1 = await subtle.digest("SHA-256", arr_0)
+    return [arr_0, byteArrayToString(arr_1)]
   }
 
   /**
