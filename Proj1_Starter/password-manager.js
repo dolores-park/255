@@ -20,26 +20,13 @@ class Keychain {
    *  You may design the constructor with any parameters you would like.
    * Return Type: void
    */
-  constructor() {
-    this.data = {
-      /* Store member variables that you intend to be public here
-         (i.e. information that will not compromise security if an adversary sees) */
-    };
-    this.secrets = {
-      /* Store member variables that you intend to be private here
-         (information that an adversary should NOT see). */
-    };
+  constructor(data, secrets) {
+    this.data = data;
+    this.secrets = secrets;
 
     this.data.version = "CS 255 Password Manager v1.0";
     // Flag to indicate whether password manager is "ready" or not
     this.ready = true;
-
-    // throw "Not Implemented!";
-    this.secrets.kvs = null;
-    this.secrets.MasterKey = null;
-    this.secrets.DomainMAC = null;
-    this.secrets.EncKey = null;
-    this.secrets.KVSHash = null;
   }
 
   /**
@@ -51,11 +38,16 @@ class Keychain {
    * Return Type: void
    */
   static async init(password) {
-    keychain.secrets.kvs = new Map();
 
     let masterSalt = genRandomSalt();
     // convert PW into usable for by subtle
-    let rawKey = await subtle.importKey("raw", password, {name: "PBKDF2"}, false, ["deriveKey"]);
+    let rawKey = await subtle.importKey(
+      "raw",
+      password,
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
     let masterKey = await subtle.deriveKey(
       {
         name: "PBKDF2",
@@ -68,28 +60,51 @@ class Keychain {
       true,
       ["sign", "verify"]
     );
-    keychain.secrets.MasterKey = await subtle.deriveKey(
-      "PBKDF2",
-      untypedToTypedArray(password),
-      "AES-GCM",
-      false,
-      ["encrypt", "decrypt"]
-    );
-    keychain.secrets.DomainMAC = await subtle.deriveKey(
-      "PBKDF2",
-      keychain.secrets.MasterKey,
+
+    let domainSalt = genRandomSalt();
+    let domainSubKeyByte = await subtle.sign(
       "HMAC",
+      masterKey,
+      domainSalt
+    );
+    let domainSubKeyString = byteArrayToString(domainSubKeyByte);
+    let domainSubKey = subtle.importKey(
+      "raw",
+      domainSubKeyString,
+      { name: "HMAC", hash: "SHA-256", length: 256 },
       false,
       ["sign", "verify"]
     );
-    keychain.secrets.EncKey = await subtle.deriveKey(
-      "PBKDF2",
-      keychain.secrets.MasterKey,
-      "AES-GCM",
+
+
+    let passwordSalt = genRandomSalt();
+    let passwordSubKeyByte = await subtle.sign(
+      "HMAC",
+      masterKey,
+      passwordSalt
+    );
+    let passwordSubKeyString = byteArrayToString(passwordSubKeyByte);
+    let passwordSubKey = subtle.importKey(
+      "raw",
+      passwordSubKeyString,
+      { "name": "AES-GCM" , length: 256 },
       false,
       ["encrypt", "decrypt"]
     );
-    return keychain;
+
+    let secrets = {
+      kvs: new Map(),
+      MasterSalt: masterSalt,
+      MasterKey: masterKey,
+      DomainSalt: domainSalt,
+      DomainSubKey: domainSubKey,
+      PasswordSalt: passwordSalt,
+      PasswordSubKey: passwordSubKey
+    };
+
+    let data = {};
+
+    return new Keychain(secrets, data);
   }
 
   /**
