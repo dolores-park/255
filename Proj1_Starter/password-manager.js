@@ -141,6 +141,8 @@ class Keychain {
       }
     }
     repr = JSON.parse(repr)
+    // console.log(">>>>>>>>>>")
+    // console.log(repr)
 
     let rawKey = await subtle.importKey(
       "raw",
@@ -197,8 +199,12 @@ class Keychain {
     let arr_0 = {
       secrets: this.secrets,
       data: this.data,
-      ready: this.ready
+      ready: this.ready,
+      kvs: this.secrets.kvs
     }
+    // console.log(arr_0);
+    // console.log(">>>>>>>>>><<<<<<<<<<")
+
     arr_0 = JSON.stringify(arr_0)
     let arr_1 = await subtle.digest("SHA-256", arr_0)
     return [arr_0, byteArrayToString(arr_1)]
@@ -220,8 +226,8 @@ class Keychain {
     }
     name = await subtle.sign("HMAC", this.secrets.DomainSubKey, name);
     name = byteArrayToString(name);
-    if (this.secrets.kvs.has(name)) {
-      let encPw = this.secrets.kvs.get(name);
+    if (name in this.secrets.kvs) {
+      let encPw = this.secrets.kvs[name];
       encPw = await subtle.decrypt(
         { name: "AES-GCM", iv: this.secrets.ivs[name] },
         this.secrets.PasswordSubKey,
@@ -266,7 +272,7 @@ class Keychain {
       { name: "AES-GCM", iv: iv },
       this.secrets.PasswordSubKey,
       value);
-    this.secrets.kvs.set(byteArrayToString(name), value);
+    this.secrets.kvs[byteArrayToString(name)] = value;
 
     this.secrets.KVSHash = await subtle.digest("SHA-256", JSON.stringify(this.secrets.kvs));
   }
@@ -286,8 +292,8 @@ class Keychain {
     }
     name = await subtle.sign("HMAC", this.secrets.DomainSubKey, name);
     name = byteArrayToString(name);
-    if (this.secrets.kvs.has(name)) {
-      this.secrets.kvs.delete(name);
+    if (name in this.secrets.kvs) {
+      delete this.secrets.kvs[name];
       this.secrets.ivs.delete(name)
       return true;
     }
