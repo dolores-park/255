@@ -224,15 +224,17 @@ class Keychain {
    * Return Type: Promise<boolean>
    */
   async remove(name) {
-    if (this.secrets.KVS == null) {
+    if (this.secrets.kvs == null) {
       throw "Keychain not initialized!";
     }
+    name = await subtle.sign("HMAC", this.secrets.DomainSubKey, name);
+    name = byteArrayToString(name);
     if (this.secrets.kvs.has(name)) {
       this.secrets.kvs.delete(name);
+      this.secrets.ivs.delete(name)
       return true;
-    } else {
-      return false;
     }
+    return false;
   }
 
   static get PBKDF2_ITERATIONS() {
