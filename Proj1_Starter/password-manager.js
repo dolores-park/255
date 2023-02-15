@@ -20,9 +20,9 @@ class Keychain {
    *  You may design the constructor with any parameters you would like.
    * Return Type: void
    */
-  constructor(data, secrets) {
-    this.data = data;
+  constructor(secrets, data) {
     this.secrets = secrets;
+    this.data = data;
 
     this.data.version = "CS 255 Password Manager v1.0";
     // Flag to indicate whether password manager is "ready" or not
@@ -67,10 +67,9 @@ class Keychain {
       masterKey,
       domainSalt
     );
-    let domainSubKeyString = byteArrayToString(domainSubKeyByte);
-    let domainSubKey = subtle.importKey(
+    let domainSubKey = await subtle.importKey(
       "raw",
-      domainSubKeyString,
+      domainSubKeyByte,
       { name: "HMAC", hash: "SHA-256", length: 256 },
       false,
       ["sign", "verify"]
@@ -83,23 +82,26 @@ class Keychain {
       masterKey,
       passwordSalt
     );
-    let passwordSubKeyString = byteArrayToString(passwordSubKeyByte);
-    let passwordSubKey = subtle.importKey(
+    let passwordSubKey = await subtle.importKey(
       "raw",
-      passwordSubKeyString,
+      passwordSubKeyByte,
       { "name": "AES-GCM" , length: 256 },
       false,
       ["encrypt", "decrypt"]
     );
 
+    let secretKVS = new Map()
+    let secretKVSHash = await subtle.digest("SHA-256", JSON.stringify(secretKVS));
     let secrets = {
-      kvs: new Map(),
+      ivs: new Map(),
+      kvs: secretKVS,
       MasterSalt: masterSalt,
       MasterKey: masterKey,
       DomainSalt: domainSalt,
       DomainSubKey: domainSubKey,
       PasswordSalt: passwordSalt,
-      PasswordSubKey: passwordSubKey
+      PasswordSubKey: passwordSubKey,
+      KVSHash: secretKVSHash,
     };
 
     let data = {};
@@ -159,11 +161,15 @@ class Keychain {
     if (this.secrets.kvs == null) {
       throw "Keychain not initialized!";
     }
-    name = await subtle.sign("HMAC", this.secrets.DomainMAC, name);
-    if (!this.secrets.kvs.has(name)) {
+    name = await subtle.sign("HMAC", this.secrets.DomainSubKey, name);
+    name = byteArrayToString(name);
+    if (this.secrets.kvs.has(name)) {
       let encPw = this.secrets.kvs.get(name);
-      encPw = await subtle.decrypt("AES-GCM", this.secrets.EncKey, encPw);
-      return true;
+      encPw = await subtle.decrypt(
+        { name: "AES-GCM", iv: this.secrets.ivs[name] },
+        this.secrets.PasswordSubKey,
+        encPw);
+      return byteArrayToString(encPw);
     }
     return null;
   }
@@ -184,22 +190,28 @@ class Keychain {
       throw "Keychain not initialized!";
     }
 
-    let curHash = await subtle.digest("SHA-256", this.secrets.kvs);
-    if (curHash != this.secrets.KVSHash) {
+    let curHash = await subtle.digest("SHA-256", JSON.stringify(this.secrets.kvs));
+    if (byteArrayToString(curHash) != byteArrayToString(this.secrets.KVSHash)) {
       throw "KVS has been tampered with!";
     }
 
-    if (length(value) > 32) {
+    if (value.length > 64) {
       // ensure that password is less than 64 bytes
       throw "Password is too long!";
     }
 
-    // Enc-then-MAC protocol, protects against swap attacks
-    name = await subtle.sign("HMAC", this.secrets.DomainMAC, name);
-    value = await subtle.encrypt("AES-GCM", this.secrets.EncKey, value);
-    this.secrets.kvs.set(name, value);
 
-    this.secrets.KVSHash = await subtle.digest("SHA-256", this.secrets.kvs);
+    // Enc-then-MAC protocol, protects against swap attacks
+    name = await subtle.sign("HMAC", this.secrets.DomainSubKey, name);
+    let iv = genRandomSalt(12);
+    this.secrets.ivs[byteArrayToString(name)] = iv;
+    value = await subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      this.secrets.PasswordSubKey,
+      value);
+    this.secrets.kvs.set(byteArrayToString(name), value);
+
+    this.secrets.KVSHash = await subtle.digest("SHA-256", JSON.stringify(this.secrets.kvs));
   }
 
   /**
