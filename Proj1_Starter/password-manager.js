@@ -108,7 +108,7 @@ class Keychain {
       DomainSubKey: domainSubKey,
       PasswordSalt: passwordSalt,
       PasswordSubKey: passwordSubKey,
-      KVSHash: secretKVSHash,
+      KVSHash: byteArrayToString(secretKVSHash),
     };
 
     let data = {};
@@ -192,10 +192,6 @@ class Keychain {
       ["encrypt", "decrypt"]
     );
     secrets.kvs = repr.kvs;
-    Object.keys(secrets.kvs).forEach(function(key, idx) {
-      secrets.kvs[key] = untypedToTypedArray(secrets.kvs[key])
-    })
-    secrets.KVSHash = untypedToTypedArray(secrets.KVSHash)
 
     return new Keychain(secrets, repr.data);
 
@@ -221,16 +217,11 @@ class Keychain {
     let secrets = Object.assign({}, this.secrets)
     secrets.DomainSubKey = await subtle.exportKey("jwk", secrets.DomainSubKey);
     secrets.PasswordSubKey = await subtle.exportKey("jwk", secrets.PasswordSubKey);
-    secrets.KVSHash = bufferToUntypedArray(this.secrets.KVSHash)
-    let kvs = Object.assign({}, this.secrets.kvs)
-    for (const [key, value] of Object.entries(kvs)) {
-      kvs[key] = bufferToUntypedArray(value);
-    }
     let arr_0 = {
       secrets: secrets,
       data: this.data,
       ready: this.ready,
-      kvs: kvs
+      kvs: this.secrets.kvs
     }
     // console.log(arr_0);
     // console.log(">>>>>>>>>><<<<<<<<<<")
@@ -257,7 +248,7 @@ class Keychain {
     name = await subtle.sign("HMAC", this.secrets.DomainSubKey, name);
     name = byteArrayToString(name);
     if (name in this.secrets.kvs) {
-      let encPw = this.secrets.kvs[name];
+      let encPw = untypedToTypedArray(this.secrets.kvs[name]);
       encPw = await subtle.decrypt(
         { name: "AES-GCM", iv: this.secrets.ivs[name] },
         this.secrets.PasswordSubKey,
@@ -284,7 +275,7 @@ class Keychain {
     }
 
     let curHash = await subtle.digest("SHA-256", JSON.stringify(this.secrets.kvs));
-    if (byteArrayToString(curHash) != byteArrayToString(this.secrets.KVSHash)) {
+    if (byteArrayToString(curHash) != this.secrets.KVSHash) {
       throw "KVS has been tampered with!";
     }
 
@@ -302,9 +293,9 @@ class Keychain {
       { name: "AES-GCM", iv: iv },
       this.secrets.PasswordSubKey,
       value);
-    this.secrets.kvs[byteArrayToString(name)] = value;
+    this.secrets.kvs[byteArrayToString(name)] = bufferToUntypedArray(value);
 
-    this.secrets.KVSHash = await subtle.digest("SHA-256", JSON.stringify(this.secrets.kvs));
+    this.secrets.KVSHash = byteArrayToString(await subtle.digest("SHA-256", JSON.stringify(this.secrets.kvs)));
   }
 
   /**
