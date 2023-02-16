@@ -192,6 +192,10 @@ class Keychain {
       ["encrypt", "decrypt"]
     );
     secrets.kvs = repr.kvs;
+    Object.keys(secrets.kvs).forEach(function(key, idx) {
+      secrets.kvs[key] = untypedToTypedArray(secrets.kvs[key])
+    })
+    secrets.KVSHash = untypedToTypedArray(secrets.KVSHash)
 
     return new Keychain(secrets, repr.data);
 
