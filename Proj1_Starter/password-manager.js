@@ -57,7 +57,7 @@ class Keychain {
       },
       rawKey,
       { name: "HMAC", hash: "SHA-256", length: 256 },
-      true,
+      false,
       ["sign", "verify"]
     );
     let signedData = "This will be signed.";
@@ -77,7 +77,7 @@ class Keychain {
       "raw",
       domainSubKeyByte,
       { name: "HMAC", hash: "SHA-256", length: 256 },
-      false,
+      true,
       ["sign", "verify"]
     );
 
@@ -92,7 +92,7 @@ class Keychain {
       "raw",
       passwordSubKeyByte,
       { "name": "AES-GCM" , length: 256 },
-      false,
+      true,
       ["encrypt", "decrypt"]
     );
 
@@ -175,7 +175,25 @@ class Keychain {
       throw "invalid password"
     }
 
-    return new Keychain(repr.secrets, repr.data);
+    let secrets = repr.secrets;
+
+    secrets.DomainSubKey = await subtle.importKey(
+      'jwk',
+      secrets.DomainSubKey,
+      { name: "HMAC", hash: "SHA-256", length: 256 },
+      true,
+      ["sign", "verify"]
+      );
+    secrets.PasswordSubKey = await subtle.importKey(
+      'jwk',
+      secrets.PasswordSubKey,
+      { "name": "AES-GCM" , length: 256 },
+      true,
+      ["encrypt", "decrypt"]
+    );
+    secrets.kvs = repr.kvs;
+
+    return new Keychain(secrets, repr.data);
 
   }
 
@@ -196,11 +214,19 @@ class Keychain {
     if (!this.ready) {
       return null
     }
+    let secrets = Object.assign({}, this.secrets)
+    secrets.DomainSubKey = await subtle.exportKey("jwk", secrets.DomainSubKey);
+    secrets.PasswordSubKey = await subtle.exportKey("jwk", secrets.PasswordSubKey);
+    secrets.KVSHash = bufferToUntypedArray(this.secrets.KVSHash)
+    let kvs = Object.assign({}, this.secrets.kvs)
+    for (const [key, value] of Object.entries(kvs)) {
+      kvs[key] = bufferToUntypedArray(value);
+    }
     let arr_0 = {
-      secrets: this.secrets,
+      secrets: secrets,
       data: this.data,
       ready: this.ready,
-      kvs: this.secrets.kvs
+      kvs: kvs
     }
     // console.log(arr_0);
     // console.log(">>>>>>>>>><<<<<<<<<<")
