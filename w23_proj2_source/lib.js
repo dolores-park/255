@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto')
 const { subtle } = require('node:crypto').webcrypto
+const { getRandomValues } = require('node:crypto').webcrypto;
 
 /// /////////////////////////////////////////////////////////////////////////////
 //  Cryptographic Primitives
@@ -30,7 +31,7 @@ function byteArrayToString (arr) {
 function genRandomSalt (len = 16) {
   // Used to generate IVs for AES encryption
   // Used in combination with encryptWithGCM and decryptWithGCM
-  return byteArrayToString(crypto.getRandomValues(new Uint8Array(len)))
+  return byteArrayToString(getRandomValues(new Uint8Array(len)))
 }
 
 async function cryptoKeyToJSON (cryptoKey) {
