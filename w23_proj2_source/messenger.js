@@ -138,10 +138,11 @@ class MessengerClient {
     // Governemnt operations: START
     let mk = await HMACtoAESKey(session.CKs, govEncryptionDataStr);
     let mk_buff = await HMACtoAESKey(session.CKs, govEncryptionDataStr, true);
+    session.CKs = await HMACtoHMACKey(session.CKs, govEncryptionDataStr)
 
     let gov = await generateEG();
     let gov_key = await HMACtoAESKey(
-      await computeDH(this.EGKeyPair.sec, gov.pub),
+      await computeDH(gov.sec, this.govPublicKey),
       govEncryptionDataStr
     );
 
