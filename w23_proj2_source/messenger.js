@@ -194,16 +194,10 @@ class MessengerClient {
 
     // if session not initialized, do so by generating necessary double ratchet keys
     if (!this.sessions.hasOwnProperty(name)) {
-      const DHs = await generateEG(); // new key pair
-      const DHr = recipientCert.publicKey; // bobs public key
-      const SK = await computeDH(this.EGKeyPair.sec, recipientCert.publicKey);
-      const df = await HKDF(
-        SK, // between alice priv, bob pub
-        await computeDH(DHs.sec, DHr), // between alice's own keys
-        "ratchet-str"
-      );
-      const RK = df[0];
-      const CKs = df[1];
+      const DHs = this.EGKeyPair;
+      const DHr = null;
+      const RK = await computeDH(this.EGKeyPair.sec, recipientCert.publicKey);
+      const CKs = null;
       const CKr = null;
       const Ns = 0;
       const Nr = 0;
@@ -239,17 +233,21 @@ class MessengerClient {
     // return DECRYPT(mk, ciphertext, CONCAT(AD, header))
 
     const curSession = this.sessions[name];
-    
-    if (header.vGov != curSession.DHR) { //unclear about header vGov or cGov
+
+    // DHRatchet step:
+    if (header.vGov != curSession.DHR) {
+      curSession.PN = curSession.Ns
+      curSession.Ns = 0
+      curSession.Nr = 0
       curSession.DHR = header.vGov;
-      let temp = await HKDF(curSession.RK, await computeDH(curSession.DHS.sec, curSession.DHR));
-      curSession.RK = temp[0];
-      curSession.CKr = temp[1];
+      [curSession.RK, curSession.CKr] = await HKDF(curSession.RK,
+                                                  await computeDH(curSession.DHS.sec, curSession.DHR),
+                                                  "ratchet-str");
       curSession.DHS = await generateEG();
-      let temp1 = await HKDF(curSession.RK, await computeDH(curSession.DHS.sec, curSession.DHR));
-      curSession.RK = temp1[0];
-      curSession.CKs = temp1[1];
-    }                 
+      [curSession.RK, curSession.CKs] = await HKDF(curSession.RK,
+                                                  await computeDH(curSession.DHS.sec, curSession.DHR),
+                                                  "ratchet-str");
+    }
 
     // KDF_CK(ck): HMAC [2] with SHA-256 or SHA-512 [8] is recommended, using ck
     // as the HMAC key and using separate constants as input (e.g. a single byte 
