@@ -155,7 +155,7 @@ class MessengerClient {
       // denote the outputs (v, c) of the ElGamal public key encryption.
       vGov: vGov,
       cGov: cGov,
-      ivReceive: receiver_iv,
+      receiverIV: receiver_iv,
       ivGov: ivGov,
       dh: session.DHS.pub,
       pn: session.PN,
@@ -168,7 +168,7 @@ class MessengerClient {
     const encryptedMessage = await encryptWithGCM(
       mk,
       plaintext,
-      header.ivReceive,
+      header.receiverIV,
       JSON.stringify(header)
     );
 
@@ -266,7 +266,7 @@ class MessengerClient {
       const plaintext = await decryptWithGCM(
         mk,
         ciphertext,
-        header.ivReceive,
+        header.receiverIV,
         JSON.stringify(header)
       );
       // console.log(`decrypted: ${byteArrayToString(plaintext)}`)
