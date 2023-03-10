@@ -102,13 +102,13 @@ class MessengerClient {
       const DHs = await generateEG(); // new key pair
       const DHr = recipientCert.publicKey; // bobs public key
       const SK = await computeDH(this.EGKeyPair.sec, recipientCert.publicKey);
-      const df = await HKDF(
+      // console.log(`send initial sk ${JSON.stringify(await cryptoKeyToJSON(SK))}`)
+      const [RK, CKs] = await HKDF(
         SK, // between alice priv, bob pub
         await computeDH(DHs.sec, DHr), // between alice's own keys
         "ratchet-str"
       );
-      const RK = df[0];
-      const CKs = df[1];
+      // console.log(`send initial CKs ${JSON.stringify(await cryptoKeyToJSON(CKs))}`)
       const CKr = null;
       const Ns = 0;
       const Nr = 0;
@@ -157,10 +157,14 @@ class MessengerClient {
       cGov: cGov,
       ivReceive: receiver_iv,
       ivGov: ivGov,
+      dh: session.DHS.pub,
+      pn: session.PN,
+      n: session.Ns
     };
     // Governemnt operations: END
 
     // Encrypt message with header as authenticated data and new sending key
+    // console.log(`send mk: ${byteArrayToString(mk_buff)}`)
     const encryptedMessage = await encryptWithGCM(
       mk,
       plaintext,
@@ -197,6 +201,7 @@ class MessengerClient {
       const DHs = this.EGKeyPair;
       const DHr = null;
       const RK = await computeDH(this.EGKeyPair.sec, recipientCert.publicKey);
+      // console.log(`receive initial sk ${JSON.stringify(await cryptoKeyToJSON(RK))}`)
       const CKs = null;
       const CKr = null;
       const Ns = 0;
@@ -220,29 +225,18 @@ class MessengerClient {
       this.sessions[name] = session;
     }
 
-    // def RatchetDecrypt(state, header, ciphertext, AD):
-    // plaintext = TrySkippedMessageKeys(state, header, ciphertext, AD)
-    // if plaintext != None:
-    //     return plaintext
-    // if header.dh != state.DHr:
-    //     SkipMessageKeys(state, header.pn)
-    //     DHRatchet(state, header)
-    // SkipMessageKeys(state, header.n)
-    // state.CKr, mk = KDF_CK(state.CKr)
-    // state.Nr += 1
-    // return DECRYPT(mk, ciphertext, CONCAT(AD, header))
-
     const curSession = this.sessions[name];
 
     // DHRatchet step:
-    if (header.vGov != curSession.DHR) {
+    if (header.dh != curSession.DHR) {
       curSession.PN = curSession.Ns
       curSession.Ns = 0
       curSession.Nr = 0
-      curSession.DHR = header.vGov;
+      curSession.DHR = header.dh;
       [curSession.RK, curSession.CKr] = await HKDF(curSession.RK,
                                                   await computeDH(curSession.DHS.sec, curSession.DHR),
                                                   "ratchet-str");
+      // console.log(`receive initial CKr ${JSON.stringify(await cryptoKeyToJSON(curSession.CKr))}`)
       curSession.DHS = await generateEG();
       [curSession.RK, curSession.CKs] = await HKDF(curSession.RK,
                                                   await computeDH(curSession.DHS.sec, curSession.DHR),
@@ -253,27 +247,33 @@ class MessengerClient {
     // as the HMAC key and using separate constants as input (e.g. a single byte 
     // 0x01 as input to produce the message key, and a single byte 0x02 as input to 
     // produce the next chain key).
-    let temp2 = await HKDF(curSession.CKr, curSession.RK, 'ratchet-str');
-    curSession.CKr = temp2[0];
-    let mk = temp2[1];
+    let mk = await HMACtoAESKey(curSession.CKr, govEncryptionDataStr);
+    let mk_buff = await HMACtoAESKey(curSession.CKr, govEncryptionDataStr, true);
+    curSession.CKr = await HMACtoHMACKey(curSession.CKr, govEncryptionDataStr)
 
-    // Verify the integrity of the header
-    const headerMAC = await HMACtoHMACKey(curSession.RK, JSON.stringify(header));
-    if (!verifyWithECDSA(header.vGov, headerMAC, header.cGov)) {
-      throw new Error("Tampered message detected");
-    }
-
-    // Decrypt the ciphertext using the receiving key
-    const plaintext = await decryptWithGCM(
-      mk,
-      ciphertext,
-      header.ivGov
-    );
+    // // Verify the integrity of the header
+    // const headerMAC = await HMACtoHMACKey(curSession.RK, JSON.stringify(header));
+    // if (!verifyWithECDSA(header.vGov, headerMAC, header.cGov)) {
+    //   throw new Error("Tampered message detected");
+    // }
 
     // Increment the receiving chain
     curSession.Nr++;
 
-    return byteArrayToString(plaintext);
+    // console.log(`recieve mk: ${byteArrayToString(mk_buff)}`)
+    // Decrypt the ciphertext using the receiving key
+    try {
+      const plaintext = await decryptWithGCM(
+        mk,
+        ciphertext,
+        header.ivReceive,
+        JSON.stringify(header)
+      );
+      // console.log(`decrypted: ${byteArrayToString(plaintext)}`)
+      return byteArrayToString(plaintext);
+    } catch (e) {
+      throw new Error(`Tampered message detected`);
+    }
   }
 }
 
